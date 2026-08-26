@@ -20,6 +20,9 @@ The core predictive engine is a 3-class XGBoostClassifier trained on historical 
 Simulates the full tournament multiple times from the group stage to the final, using the official knockout stage scheme.
 Default is 10,000 simulations of the entire tournament returning the estimated probability of each team lifting the trophy.
 
+## 📊 Data Source
+International Matches: Historical match results since 1872.
+
 ## 💻 The Streamlit Web App
 https://worldcup2026-simulator.streamlit.app/
 
@@ -30,9 +33,6 @@ The project includes an interactive web application built with Streamlit:
 - Full Tournament Simulation Results, displaying the results of 10,000-iterations simulations of the full tournament
 
 - Power Rankings, displaying the scoreboard of the Elo ranking of World Cup teams.
-
-## 📊 Data Source
-International Matches: Historical match results since 1872.
 
 ## ✨ Update: Knockout Stage
 Added the simulation of the knockout stage based on the actual Round of 32 matches.
