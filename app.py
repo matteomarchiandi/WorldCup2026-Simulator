@@ -305,7 +305,7 @@ with tab2:
         sns.set_theme(style="whitegrid", font="sans-serif")
         
         # Setup figure
-        fig_static, ax_static = plt.subplots(figsize=(8, 10), dpi=150)
+        fig_static, ax_static = plt.subplots(figsize=(8, 12), dpi=150)
         
         # Horizontal Bar plot (swapped x and y)
         palette = sns.color_palette("Blues_r", n_colors=len(top_simul))
@@ -384,7 +384,7 @@ with tab3:
     with colB:
         st.markdown("**Top 15 Teams Worldwide**")
         # Plot a horizontal bar chart of just the Top 15 teams
-        fig_rank, ax_rank = plt.subplots(figsize=(8, 10))
+        fig_rank, ax_rank = plt.subplots(figsize=(8, 12))
         sns.barplot(data=df_ranks.head(15), x="ELO Rating", y="Team", palette="viridis", ax=ax_rank)
         
         # Adjust the X-axis so the differences are more visible (zoomed in)
