@@ -349,63 +349,8 @@ with tab2:
         plt.tight_layout()
         
         # Display in Streamlit
-        st.pyplot(fig_static)with col_right:
-        st.markdown("**Visual Probabilities (Top 15)**")
-        
-        # Filter for the top 15 most probable teams
-        top_simul = simul.head(15).reset_index(drop=True)
-        
-        sns.set_theme(style="whitegrid", font="sans-serif")
-        
-        # Setup figure
-        fig_static, ax_static = plt.subplots(figsize=(10, 6), dpi=150)
-        
-        # Horizontal Bar plot (swapped x and y)
-        palette = sns.color_palette("Blues_r", n_colors=len(top_simul))
-        sns.barplot(
-            data=top_simul,
-            x='Probability_%',
-            y='Team',
-            hue='Team',
-            legend=False,
-            palette=palette,
-            edgecolor="white",
-            linewidth=1.5,
-            alpha=0.9,
-            ax=ax_static
-        )
-        
-        # Styled error bars (Horizontal requires xerr instead of yerr)
-        error_bars = ax_static.errorbar(
-            x=top_simul['Probability_%'],
-            y=range(len(top_simul)),
-            xerr=top_simul['MCSE_%'],
-            fmt='none',
-            ecolor='firebrick',
-            elinewidth=1.8,
-            capsize=4.5,
-            capthick=1.8,
-            zorder=5,
-            label='Monte Carlo SE (MCSE)'
-        )
-        
-        # Axes formatting and Titles (Adjusted for horizontal layout)
-        ax_static.set_xlim(0, max(top_simul['Probability_%'] + top_simul['MCSE_%']) * 1.15)
-        ax_static.xaxis.set_major_formatter(mtick.StrMethodFormatter('{x:.0f}%'))
-        
-        # Legend with only the error bars
-        ax_static.legend(handles=[error_bars], loc='lower right', frameon=True, facecolor='white', edgecolor='grey')
-        
-        ax_static.set_title("2026 World Cup Estimated Winning Probabilities (Top 15)", fontsize=14, fontweight='bold', pad=15)
-        ax_static.set_xlabel("Probability (%)", fontsize=11, fontweight='semibold', labelpad=10)
-        ax_static.set_ylabel("Team", fontsize=11, fontweight='semibold', labelpad=10)
-        
-        plt.tight_layout()
-        
-        # Display in Streamlit
         st.pyplot(fig_static)
-
-
+        
 # ==========================================
 # TAB 3: POWER RANKINGS
 # ==========================================
