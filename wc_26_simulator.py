@@ -1,3 +1,9 @@
+# # Recreate the virtual environment
+# python -m venv .venv
+
+# # Reinstall the exact dependencies
+# .venv\Scripts\python.exe -m pip install -r requirements.txt
+
 """ Preliminary Analysis and Building of the Model"""
 
 import pandas as pd
@@ -26,6 +32,12 @@ msno.matrix(results, color=(0.1, 0.1, 0.1))
 plt.figure(figsize=(10, 3))
 plt.show()
 
+print(results.shape)
+row = 49355
+results.iloc[row:row+1]
+
+# results[(results['date'] > '2003-01-01') & (results['date'] < '2026-06-11') & (results['home_team'].isin(wc_teams) & results['away_team'].isin(wc_teams)) ]
+results[(results['date'] > '2023-01-01') & (results['date'] < '2026-06-11')]
 
 # Mapping inconsistent team names to match the world_cup_2026_groups definition
 team_name_map = {
@@ -162,13 +174,15 @@ results['tournament_k'] = results['tournament'].apply(elo_score.get_k_weight)
 
 new_order = ['date', 'home_team', 'away_team', 'home_pre_elo', 'away_pre_elo',
        'home_score', 'away_score', 'tournament', 'tournament_k', 'neutral']
-results = results.reindex(columns=new_order)
+results = results[new_order]
 results
 
 # Print the top 20 Elo scores
 elo_series = pd.Series(current_elos).sort_values(ascending=False)
 print("TOP 20 Elo RATINGS")
 print(elo_series.head(20))
+
+
 
 """Prepare data for XGBoost"""
 results_xgb = results.copy()
@@ -189,7 +203,7 @@ results_xgb['match_outcome'] = match_outcome
 results_xgb
 
 features = ['date', 'home_pre_elo', 'away_pre_elo', 'elo_pre_diff','match_outcome', 'tournament_k', 'neutral']
-results_xgb = results_xgb.reindex(columns=features)
+results_xgb = results_xgb[features]
 results_xgb['neutral'] = results_xgb['neutral'].astype(int)
 results_xgb = pd.get_dummies(results_xgb, columns=['tournament_k'], prefix='k', dtype=int) # one-hot encoding for tournament K
 results_xgb = results_xgb[ results_xgb['date'] > '2000-01-01' ].reset_index(drop=True)
@@ -217,7 +231,9 @@ plt.xticks([])
 plt.title('Distribution of neutral Matches')
 plt.show()
 
-# Data Augmentation for neutral matches
+# ==========================================================
+# DATA AUGMENTATION: INTERLEAVING MIRRORED NEUTRAL MATCHES
+# ==========================================================
 # 1. Create a sorting key to preserve order (even numbers for original rows)
 results_xgb['sort_key'] = results_xgb.index * 2
 
@@ -244,7 +260,11 @@ neutral_matches['sort_key'] = neutral_matches.index * 2 + 1
 results_xgb = pd.concat([results_xgb, neutral_matches])
 results_xgb = results_xgb.sort_values('sort_key').drop(columns=['sort_key']).reset_index(drop=True)
 
+print(f"Interleaved {len(neutral_matches)} neutral matches directly after their originals.")
+print(f"Final dataset size ready for XGBoost: {len(results_xgb)} rows.")
+
 results_xgb
+
 
 """Split data into Training and Test Sets"""
 train_res = results_xgb[ results_xgb['date'] < '2022-11-20' ]
@@ -266,10 +286,14 @@ model = XGBClassifier(
     n_estimators=300,       
     objective='multi:softprob',
     learning_rate=0.1,    
-    max_depth=4,                  
+    max_depth=4,           
+    subsample=0.8,          
     random_state=42)
 
 model.fit(X_train, y_train)
+
+# model.predict_proba(X_test)
+# model.predict(X_test)
 
 predicted_probabilities = model.predict_proba(X_test)
 predictions = model.predict(X_test)
@@ -427,26 +451,26 @@ def simulate_match(team_h, team_a, elos, is_knockout=False):
 
 
 # Match to test the method
-team_1 = 'France'
-team_2 = 'Brazil'
-n_sims = 1000
+# team_1 = 'France'
+# team_2 = 'Brazil'
+# n_sims = 10
 
-win_team_1 = 0
-win_team_2 = 0
-draw = 0
+# win_team_1 = 0
+# win_team_2 = 0
+# draw = 0
 
-for _ in range(n_sims):
-    result = simulate_match(team_1, team_2, current_elos)
-    if result == team_1:
-        win_team_1 += 1
-    elif result == team_2:
-        win_team_2 += 1
-    else:
-        draw += 1
+# for _ in range(n_sims):
+#     result = simulate_match(team_1, team_2, current_elos)
+#     if result == team_1:
+#         win_team_1 += 1
+#     elif result == team_2:
+#         win_team_2 += 1
+#     else:
+#         draw += 1
 
-print(f"{team_1} win: {(win_team_1/n_sims)*100:.2f}%")
-print(f"Draw: {(draw/n_sims)*100:.2f}%")
-print(f"{team_2} win: {(win_team_2/n_sims)*100:.2f}%")
+# print(f"{team_1} win: {(win_team_1/n_sims)*100:.2f}%")
+# print(f"Draw: {(draw/n_sims)*100:.2f}%")
+# print(f"{team_2} win: {(win_team_2/n_sims)*100:.2f}%")
 
 """## Simulate the Group Stage"""
 # ==========================================
@@ -1197,16 +1221,29 @@ def simulate_knockouts(round_of_32_matches, elos):
 simulate_knockouts(round_of_32_matches, current_elos)
 
 """Simulate the whole tournament"""
-
 # ==========================================
-# 4. THE MONTE CARLO SIMULATION
+# 4. THE MONTE CARLO MAIN LOOP
 # ==========================================
-
 def simulate_world_cup_26(n_simulations=10000, elos=current_elos):
-    """
-    Runs the 2026 World Cup N times
-    """
+    # Runs the 2026 World Cup N times
+
     champions_tracker = defaultdict(int)
+
+    # List the 2026 World Cup groups
+    groups_2026 = {
+    "Group A": ["Mexico", "South Africa", "South Korea", "Czechia"],
+    "Group B": ["Canada", "Bosnia and Herzegovina", "Qatar", "Switzerland"],
+    "Group C": ["Brazil", "Morocco", "Haiti", "Scotland"],
+    "Group D": ["United States", "Paraguay", "Australia", "Turkey"],
+    "Group E": ["Germany", "Curaçao", "Ivory Coast", "Ecuador"],
+    "Group F": ["Netherlands", "Japan", "Sweden", "Tunisia"],
+    "Group G": ["Belgium", "Egypt", "Iran", "New Zealand"],
+    "Group H": ["Spain", "Cabo Verde", "Saudi Arabia", "Uruguay"],
+    "Group I": ["France", "Senegal", "Iraq", "Norway"],
+    "Group J": ["Argentina", "Algeria", "Austria", "Jordan"],
+    "Group K": ["Portugal", "DR Congo", "Uzbekistan", "Colombia"],
+    "Group L": ["England", "Croatia", "Ghana", "Panama"]
+}
 
     print(f"Simulating the 2026 World Cup {n_simulations} times...")
 
@@ -1214,7 +1251,7 @@ def simulate_world_cup_26(n_simulations=10000, elos=current_elos):
     for i in range(n_simulations):
 
         # Step 1: Simulate all 12 Groups
-        all_standings = simulate_group_stage(wc_26_groups)
+        all_standings = simulate_group_stage(groups_2026)
 
         # Step 2: Find the match-ups involving the 8 best thirds
         advancing_groups = get_best_third_place_groups(all_standings, elos)
@@ -1231,23 +1268,30 @@ def simulate_world_cup_26(n_simulations=10000, elos=current_elos):
         champions_tracker[champion] += 1
 
         # Print progress to the console
-        if (i + 1) % 500 == 0:
+        if (i + 1) % 1000 == 0:
             print(f"Completed {i + 1} simulations out of {n_simulations}...")
 
-    # AGGREGATE AND PRINT RESULTS
-    print("\n=======================================")
-    print(" 2026 WORLD CUP CHAMPION PROBABILITIES")
-    print("=======================================")
+    # Calculate probability in percentage
+    probs = {team: (wins / n_simulations) for team, wins in champions_tracker.items()}
+    sorted_probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
 
-    results = {team: (wins / n_simulations) * 100 for team, wins in champions_tracker.items()}
-    sorted_results = sorted(results.items(), key=lambda x: x[1], reverse=True)
+    # Filter only teams with a probability > 0
+    filtered_probs = [(team, win_prob) for team, win_prob in sorted_probs if win_prob > 0]
 
-    for rank, (team, win_prob) in enumerate(sorted_results, 1):
-        if win_prob > 0:
-            print(f"{rank}. {team}: {win_prob:.2f}%")
+    # Create DataFrame
+    sorted_results = pd.DataFrame(filtered_probs, columns=['Team', 'Probability'])
+
+    # Calculate statistical analysis metrics
+    sorted_results['MCSE_%'] = sorted_results['Probability'].apply(lambda x: np.sqrt(((x) * (1 - (x))) / n_simulations) * 100)
+    sorted_results["Probability"] = sorted_results["Probability"] * 100
+    sorted_results['IC95_LB'] = sorted_results['Probability'] - 1.96 * sorted_results["MCSE_%"]
+    sorted_results['IC95_UB'] = sorted_results['Probability'] + 1.96 * sorted_results["MCSE_%"]
+    sorted_results['IC95_LB'] = sorted_results['IC95_LB'].clip(lower=0)
+    sorted_results.rename(columns={'Probability':'Probability_%'}, inplace=True)
+
+    return sorted_results
 
 """Predict the 2026 World Cup"""
-
 # To find which group a specific team belongs to
 target_team = 'Jordan'
 found_group = next((group for group, teams in wc_26_groups.items() if target_team in teams), "Team not found")
@@ -1258,7 +1302,75 @@ current_elos = {team: elo for team, elo in current_elos.items() if team in wc_te
 current_elos = dict(sorted(current_elos.items()))
 print(f"Number of teams: {len(current_elos)}")
 
-simulate_world_cup_26(10000, current_elos)
+simul = simulate_world_cup_26(10000, current_elos)
+simul.head()
+
+# Plot the top 15 Winning Probabilities
+
+# 1. Filter for the top 15 most probable teams
+top_simul = (
+    simul.sort_values(by='Probability', ascending=False)
+    .head(15)
+    .reset_index(drop=True)
+)
+
+sbn.set_theme(style="whitegrid", font="sans-serif")
+
+# Slightly widen figsize to give 15 bars comfortable breathing room
+fig, ax = plt.subplots(figsize=(10, 5.5), dpi=150)
+
+# 2. Bar plot with top 15 teams
+palette = sbn.color_palette("Blues_r", n_colors=len(top_simul))
+sbn.barplot(
+    data=top_simul,
+    x='Team',
+    y='Probability',
+    hue='Team',
+    legend=False,
+    palette=palette,
+    edgecolor="white",
+    linewidth=1.5,
+    alpha=0.9,
+    ax=ax
+)
+
+# 3. Styled error bars
+error_bars = ax.errorbar(
+    x=range(len(top_simul)),
+    y=top_simul['Probability'],
+    yerr=top_simul['MCSE_%'],
+    fmt='none',
+    ecolor='firebrick',
+    elinewidth=1.8,
+    capsize=4.5,
+    capthick=1.8,
+    zorder=5,
+    label='Monte Carlo SE (MCSE)'
+)
+
+ax.set_ylim(0, max(top_simul['Probability'] + top_simul['MCSE_%']) * 1.25)
+ax.yaxis.set_major_formatter('{x:.0f}%')
+
+# Legend with only the error bars
+ax.legend(handles=[error_bars], loc='upper right', frameon=True, facecolor='white', edgecolor='grey')
+
+ax.set_title("2026 World Cup Estimated Winning Probabilities (Top 15)", fontsize=14, fontweight='bold', pad=15)
+ax.set_xlabel("Team", fontsize=11, fontweight='semibold', labelpad=10)
+ax.set_ylabel("Probability (%)", fontsize=11, fontweight='semibold', labelpad=10)
+plt.xticks(rotation=45, ha='right', fontsize=10)
+
+plt.tight_layout()
+plt.show()
+
+
+
+import json
+# Save the ELO dictionary
+with open('current_elos.json', 'w') as f:
+    json.dump(current_elos, f)
+
+# Save your trained model
+wc_26_predictor.save_model('wc_model.json')
 
 ######################################################################################
 """Prediction after Group Stage
@@ -1291,16 +1403,27 @@ print("Top 10 Elo ratings:")
 print(pd.Series(current_elos).sort_values(ascending=False).head(10))
 
 
+import json
+# Save the ELO dictionary
+with open('current_elos.json', 'w') as f:
+    json.dump(current_elos, f)
+
+# Save your trained model
+wc_26_predictor.save_model('wc_model.json')
+
+
+
 def simulate_KO_world_cup_26(round_of_32_matches, n_simulations=10000, elos=current_elos):
     """
     Runs the 2026 World Cup Knockout stage N times based on the actual RO32.
+    Returns a statistical DataFrame with results.
     """
     champions_tracker = defaultdict(int)
 
     print(f"Simulating the 2026 World Cup Knockout Stage {n_simulations} times...")
 
+    # THE MONTE CARLO LOOP
     for i in range(n_simulations):
-
         # Step 4: Run the Knockout Engine (Matches 73 through 104)
         champion = simulate_knockouts(round_of_32_matches, current_elos)
 
@@ -1308,20 +1431,28 @@ def simulate_KO_world_cup_26(round_of_32_matches, n_simulations=10000, elos=curr
         champions_tracker[champion] += 1
 
         # Print progress to the console
-        if (i + 1) % 500 == 0:
+        if (i + 1) % 1000 == 0:
             print(f"Completed {i + 1} simulations out of {n_simulations}...")
 
+    # Calculate probability in percentage
+    probs = {team: (wins / n_simulations) for team, wins in champions_tracker.items()}
+    sorted_probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
 
-    print("\n======================================================")
-    print(" 2026 WORLD CUP CHAMPION PROBABILITIES (ACTUAL RO32)")
-    print("======================================================")
+    # Filter only teams with a probability > 0
+    filtered_probs = [(team, win_prob) for team, win_prob in sorted_probs if win_prob > 0]
 
-    results = {team: (wins / n_simulations) * 100 for team, wins in champions_tracker.items()}
-    sorted_results = sorted(results.items(), key=lambda x: x[1], reverse=True)
+    # Create DataFrame
+    sorted_results = pd.DataFrame(filtered_probs, columns=['Team', 'Probability'])
 
-    for rank, (team, win_prob) in enumerate(sorted_results, 1):
-        if win_prob > 0:
-            print(f"{rank}. {team}: {win_prob:.2f}%")
+    # Calculate statistical analysis metrics
+    sorted_results['MCSE_%'] = sorted_results['Probability'].apply(lambda x: np.sqrt(((x) * (1 - (x))) / n_simulations) * 100)
+    sorted_results["Probability"] = sorted_results["Probability"] * 100
+    sorted_results['IC95_LB'] = sorted_results['Probability'] - 1.96 * sorted_results["MCSE_%"]
+    sorted_results['IC95_UB'] = sorted_results['Probability'] + 1.96 * sorted_results["MCSE_%"]
+    sorted_results['IC95_LB'] = sorted_results['IC95_LB'].clip(lower=0)
+    sorted_results.rename(columns={'Probability':'Probability_%'}, inplace=True)
+
+    return sorted_results
 
 
 
@@ -1344,4 +1475,134 @@ round_of_32_matches = [
     ('Australia',     'Egypt')                   # M88
 ]
 
-simulate_KO_world_cup_26(round_of_32_matches, 10000, current_elos)
+simul_ro32 = simulate_KO_world_cup_26(round_of_32_matches, 10000, current_elos)
+simul_ro32
+
+
+######################################################################################
+"""Prediction before Semifinals
+Now I update my prediction based on the actual knockout matches before semifinals. 
+I also update the Elo scores.
+"""
+
+# Download latest version of the dataset
+path = kagglehub.dataset_download("martj42/international-football-results-from-1872-to-2017")
+
+ko_b4_semis = pd.read_csv(os.path.join(path, 'results.csv'))
+
+ko_b4_semis = ko_b4_semis[(ko_b4_semis['date'] >= '2026-06-28') & (ko_b4_semis['date'] <= '2026-07-15')]
+
+for idx, row in ko_b4_semis.iterrows():
+    elo_score.process_match(
+        home_team=row['home_team'],
+        away_team=row['away_team'],
+        home_score=row['home_score'],
+        away_score=row['away_score'],
+        tournament=row['tournament'],
+        is_neutral=row['neutral']
+    )
+
+# Update current_elos and filter for the 48 participating teams
+current_elos = {team: elo for team, elo in elo_score.scores.items() if team in wc_teams}
+current_elos = dict(sorted(current_elos.items()))
+
+print("Top 10 Elo ratings:")
+print(pd.Series(current_elos).sort_values(ascending=False).head(10))
+
+
+import json
+# Save the ELO dictionary
+with open('current_elos.json', 'w') as f:
+    json.dump(current_elos, f)
+# Save your trained model
+wc_26_predictor.save_model('wc_model.json')
+
+
+# Download latest version of the dataset
+path = kagglehub.dataset_download("martj42/international-football-results-from-1872-to-2017")
+
+ko_b4_semis = pd.read_csv(os.path.join(path, 'results.csv'))
+
+ko_b4_semis = ko_b4_semis[(ko_b4_semis['date'] >= '2026-06-28') & (ko_b4_semis['date'] <= '2026-07-11')]
+
+for idx, row in ko_b4_semis.iterrows():
+    elo_score.process_match(
+        home_team=row['home_team'],
+        away_team=row['away_team'],
+        home_score=row['home_score'],
+        away_score=row['away_score'],
+        tournament=row['tournament'],
+        is_neutral=row['neutral']
+    )
+
+# Update current_elos and filter for the 48 participating teams
+current_elos = {team: elo for team, elo in elo_score.scores.items() if team in wc_teams}
+current_elos = dict(sorted(current_elos.items()))
+
+print("Top 10 Elo ratings:")
+print(pd.Series(current_elos).sort_values(ascending=False).head(10))
+
+def simulate_semifinals(semifinal_matches, elos):
+    """
+    Simulates the semifinal matches and the final match.
+    semifinal_matches: A list of two tuples, where each tuple contains the two teams for a semifinal match.
+                       e.g., [('TeamA', 'TeamB'), ('TeamC', 'TeamD')]
+    elos: The current Elo ratings of the teams.
+    """
+
+    # Simulate the first semifinal
+    winner_sf1 = simulate_match(semifinal_matches[0][0], semifinal_matches[0][1], elos, is_knockout=True)
+
+    # Simulate the second semifinal
+    winner_sf2 = simulate_match(semifinal_matches[1][0], semifinal_matches[1][1], elos, is_knockout=True)
+
+    # Simulate the final between the winners of the semifinals
+    champion = simulate_match(winner_sf1, winner_sf2, elos, is_knockout=True)
+
+    return champion
+
+
+# To simulate multiple times from the semifinals, similar to the full tournament simulation
+
+def simulate_semis_fin(semifinal_matches, n_simulations=10000, elos=current_elos):
+    """
+    Runs the semifinals and final N times.
+    Returns a statistical DataFrame with results.
+    """
+    champions_tracker = defaultdict(int)
+
+    print(f"Simulating the semifinals and final {n_simulations} times...")
+
+    for i in range(n_simulations):
+        champion = simulate_semifinals(semifinal_matches, elos)
+        champions_tracker[champion] += 1
+
+        if (i + 1) % 1000 == 0:
+            print(f"Completed {i + 1} simulations out of {n_simulations}...")
+
+    # Calculate probability in decimal fraction
+    probs = {team: (wins / n_simulations) for team, wins in champions_tracker.items()}
+    sorted_probs = sorted(probs.items(), key=lambda x: x[1], reverse=True)
+
+    # Filter only teams with a probability > 0
+    filtered_probs = [(team, win_prob) for team, win_prob in sorted_probs if win_prob > 0]
+
+    # Create DataFrame
+    sorted_results = pd.DataFrame(filtered_probs, columns=['Team', 'Probability'])
+
+    # Calculate statistical analysis metrics
+    sorted_results['MCSE_%'] = sorted_results['Probability'].apply(lambda x: np.sqrt(((x) * (1 - (x))) / n_simulations) * 100)
+    sorted_results['IC95_LB'] = sorted_results['Probability'] - 1.96 * sorted_results["MCSE_%"]
+    sorted_results['IC95_UB'] = sorted_results['Probability'] + 1.96 * sorted_results["MCSE_%"]
+    sorted_results['IC95_LB'] = sorted_results['IC95_LB'].clip(lower=0)
+    sorted_results.rename(columns={'Probability':'Probability_%'}, inplace=True)
+
+    return sorted_results
+
+semifinals = [
+    ('France', 'Spain'),    # Winner of QF1 vs QF2
+    ('England', 'Argentina')  # Winner of QF3 vs QF4
+
+]
+simul_semis = simulate_semis_fin(semifinals, 50000, current_elos)
+simul_semis

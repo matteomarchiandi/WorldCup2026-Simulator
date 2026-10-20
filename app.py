@@ -4,13 +4,14 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 import seaborn as sns
+import io
 from xgboost import XGBClassifier
 
 # Set page configuration
 st.set_page_config(page_title="World Cup 2026 Match Predictor", page_icon="⚽", layout="centered")
 
 st.title("🌍 2026 World Cup Match Simulator")
-st.markdown("Select two teams to simulate a single match based on their ELO ratings and the trained XGBoost model (data last updated on 2026-07-11).")
+st.markdown("Select two teams to simulate a single match based on their ELO ratings and the trained XGBoost model (data last updated on 2026-06-10).")
 
 # --- Load Pre-computed Data & Model ---
 @st.cache_resource
@@ -96,7 +97,7 @@ with tab1:
     search_team = st.selectbox(
         "Select a team to find their World Cup Group:", 
         team_list, 
-        index=team_list.index("Mexico") if "Mexico" in team_list else 0
+        index=team_list.index("Argentina") if "Argentina" in team_list else 0
     )
 
     if search_team:
@@ -124,36 +125,36 @@ with tab1:
 
     col1, col2 = st.columns(2)
 
-    selectable_teams = ["Select a team"] + team_list
+    selectable_teams = ["Select a team..."] + team_list
 
     with col1:
         h_selection = st.selectbox("Home Team", selectable_teams, index=0)
         
-        if h_selection != "Select a team":
+        if h_selection != "Select a team...":
             team_h = h_selection
             elo_h = get_clean_elo(team_h)
             st.info(f"Current ELO: **{elo_h:.1f}**")
         else:
             team_h = None
-            st.info("Select a team to see their ELO")
+            st.info("Select a team to see their ELO.")
 
     with col2:
-        away_options = ["Select a team"] + [t for t in team_list if t != team_h]
+        away_options = ["Select a team..."] + [t for t in team_list if t != team_h]
         a_selection = st.selectbox("Away Team", away_options, index=0)
         
-        if a_selection != "Select a team":
+        if a_selection != "Select a team...":
             team_a = a_selection
             elo_a = get_clean_elo(team_a)
             st.info(f"Current ELO: **{elo_a:.1f}**")
         else:
             team_a = None
-            st.info("Select a team to see their ELO")
+            st.info("Select a team to see their ELO.")
 
     st.markdown("---")
     # --- Match Settings ---
     st.markdown("### Simulation Settings")
     is_knockout = st.checkbox("Knockout Match (no draws allowed)", value=False)
-    n_sims = st.slider("Number of Match Simulations", min_value=1000, max_value=10000, value=5000, step=1000)
+    n_sims = st.slider("Number of Match Simulations", min_value=500, max_value=10000, value=5000, step=1000)
 
     # --- Simulation Logic ---
     if st.button("Simulate Match", type="primary"):
@@ -235,49 +236,121 @@ with tab1:
 # ==========================================
 # TAB 2: STATIC SIMULATION RESULTS
 # ==========================================
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import io
+
 with tab2:
     st.subheader("🏆 Full Tournament Prediction Results")
-    st.markdown("These graphics show the winning probability of a team calculated across **50,000 Monte Carlo simulations** of the actual knockout stage from the semifinals using the model trained.")
+    st.markdown("These graphics show the winning probability of a team calculated across **10,000 Monte Carlo simulations** of the full tournament using the model trained.")
     
-    # Hard-coded results based on your XGBoost model's output
-    # Numbers represent total tournament wins out of 10,000 simulations
-    static_probabilities = {
-        "Argentina": 35.37, "France": 27.56, "Spain": 27.17, "England": 10.08
-    }
-        
-    # Convert the direct probabilities directly to a DataFrame
-    df_static = pd.DataFrame(list(static_probabilities.items()), columns=["Team", "Win Probability (%)"])
+    # 1. Embed the provided CSV data directly
+    csv_data = """index,Team,Probability_%,MCSE_%,IC95_LB,IC95_UB
+0,Argentina,18.81,0.39079200350058346,18.044047673138856,19.57595232686114
+1,Spain,18.21,0.38592692313441934,17.453583230656537,18.966416769343464
+2,France,13.639999999999999,0.3432128202733692,12.967302872264195,14.312697127735802
+3,England,8.219999999999999,0.2746691828363713,7.681648401640711,8.758351598359287
+4,Colombia,6.18,0.24079194338681686,5.708047790961839,6.651952209038161
+5,Brazil,5.75,0.23279551112510738,5.29372079819479,6.20627920180521
+6,Portugal,4.14,0.1992135537557623,3.7495414346387057,4.530458565361294
+7,Ecuador,3.16,0.17493267276298047,2.8171319613845585,3.502868038615442
+8,Netherlands,3.15,0.17466467874186814,2.8076572296659386,3.4923427703340613
+9,Germany,2.78,0.16439939172636864,2.457777192216317,3.1022228077836824
+10,Belgium,2.31,0.15022113699476516,2.01556657149026,2.60443342850974
+11,Japan,1.63,0.12662665596153128,1.3818117543153985,1.8781882456846013
+12,Morocco,1.55,0.12353036064061337,1.307880493144398,1.7921195068556022
+13,Uruguay,1.25,0.11110243021644486,1.032239236775768,1.467760763224232
+14,Mexico,1.24,0.11066273085370702,1.0231010475267341,1.4568989524732658
+15,Croatia,1.21,0.1093324745901235,0.9957083498033579,1.424291650196642
+16,Norway,1.01,0.09998994949493674,0.814019698989924,1.205980301010076
+17,Switzerland,0.8699999999999999,0.09286716319560968,0.6879803601366049,1.0520196398633948
+18,Turkey,0.7799999999999999,0.0879724957017817,0.6075739084245078,0.9524260915754921
+19,Australia,0.52,0.07192329247191065,0.37903034675505515,0.6609696532449449
+20,Iran,0.52,0.07192329247191065,0.37903034675505515,0.6609696532449449
+"""
+
+    # 2. Read the string as a dataframe and drop the old index column
+    simul = pd.read_csv(io.StringIO(csv_data))
+    simul = simul.drop(columns=['index'])
     
-    # Sort from highest to lowest probability
-    df_static = df_static.sort_values(by="Win Probability (%)", ascending=False).reset_index(drop=True)
-    df_static.index += 1
+    # Create a copy to adjust the index for the leaderboard display 
+    df_display = simul.copy()
+    df_display.index += 1
     
-    # Create the Layout
-    col_left, col_right = st.columns([1, 1.5])
+    # 3. Create the Layout
+    col_left, col_right = st.columns([1, 1.8])
     
     with col_left:
-        st.markdown("**Teams Leaderboard**")
+        st.markdown("**Leaderboard Data**")
         st.dataframe(
-            df_static.style.format({"Win Probability (%)": "{:.2f}%"}), 
+            df_display[['Team', 'Probability_%', 'MCSE_%', 'IC95_LB', 'IC95_UB']].style.format({
+                "Probability_%": "{:.2f}%",
+                "MCSE_%": "{:.2f}%",
+                "IC95_LB": "{:.2f}%",
+                "IC95_UB": "{:.2f}%"
+            }), 
             use_container_width=True,
-            height=175
+            height=550 
         )
         
     with col_right:
-        st.markdown("**Winning Probabilities (Top 15)**")
-        fig_static, ax_static = plt.subplots(figsize=(8, 8))
+        st.markdown("**Visual Probabilities (Top 15)**")
         
-        # Show the top 15 teams in the chart for a better overview
+        # Filter for the top 15 most probable teams
+        top_simul = simul.head(15).reset_index(drop=True)
+        
+        sns.set_theme(style="whitegrid", font="sans-serif")
+        
+        # Setup figure
+        fig, ax = plt.subplots(figsize=(10, 5.5), dpi=150)
+        
+        # Bar plot with top 15 teams
+        palette = sns.color_palette("Blues_r", n_colors=len(top_simul))
         sns.barplot(
-            data=df_static.head(15), 
-            x="Win Probability (%)", 
-            y="Team", 
-            palette="flare", 
-            ax=ax_static
+            data=top_simul,
+            x='Team',
+            y='Probability_%',
+            hue='Team',
+            legend=False,
+            palette=palette,
+            edgecolor="white",
+            linewidth=1.5,
+            alpha=0.9,
+            ax=ax
         )
-        ax_static.set_xlabel("Probability to Win the World Cup (%)")
-        ax_static.set_ylabel("")
-        st.pyplot(fig_static)
+        
+        # Styled error bars (Using the MCSE_% column)
+        error_bars = ax.errorbar(
+            x=range(len(top_simul)),
+            y=top_simul['Probability_%'],
+            yerr=top_simul['MCSE_%'],
+            fmt='none',
+            ecolor='firebrick',
+            elinewidth=1.8,
+            capsize=4.5,
+            capthick=1.8,
+            zorder=5,
+            label='Monte Carlo SE (MCSE)'
+        )
+        
+        # Axes formatting and Titles
+        ax.set_ylim(0, max(top_simul['Probability_%'] + top_simul['MCSE_%']) * 1.25)
+        ax.yaxis.set_major_formatter('{x:.0f}%')
+        
+        # Legend with only the error bars
+        ax.legend(handles=[error_bars], loc='upper right', frameon=True, facecolor='white', edgecolor='grey')
+        
+        ax.set_title("2026 World Cup Estimated Winning Probabilities (Top 15)", fontsize=14, fontweight='bold', pad=15)
+        ax.set_xlabel("Team", fontsize=11, fontweight='semibold', labelpad=10)
+        ax.set_ylabel("Probability (%)", fontsize=11, fontweight='semibold', labelpad=10)
+        
+        plt.xticks(rotation=45, ha='right', fontsize=10)
+        plt.tight_layout()
+        
+        # Display in Streamlit
+        st.pyplot(fig)
 
 
 # ==========================================
@@ -310,7 +383,7 @@ with tab3:
         )
         
     with colB:
-        st.markdown("**Top 15 Teams**")
+        st.markdown("**Top 15 Teams Worldwide**")
         # Plot a horizontal bar chart of just the Top 15 teams
         fig_rank, ax_rank = plt.subplots(figsize=(8, 10))
         sns.barplot(data=df_ranks.head(15), x="ELO Rating", y="Team", palette="viridis", ax=ax_rank)
@@ -322,6 +395,7 @@ with tab3:
         ax_rank.set_ylabel("")
         
         st.pyplot(fig_rank)
+
 
 st.markdown("---")  # Adds a clean separating line
 st.markdown(
