@@ -305,7 +305,7 @@ with tab2:
         sns.set_theme(style="whitegrid", font="sans-serif")
         
         # Setup figure
-        fig_static, ax_static = plt.subplots(figsize=(10, 6), dpi=150)
+        fig_static, ax_static = plt.subplots(figsize=(8, 10), dpi=150)
         
         # Horizontal Bar plot (swapped x and y)
         palette = sns.color_palette("Blues_r", n_colors=len(top_simul))
