@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import json
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 import seaborn as sns
 import io
 from xgboost import XGBClassifier
@@ -67,7 +68,6 @@ def get_clean_elo(team_name):
         st.write(f"The exact error is: `{e}`")
         st.stop()
 
-
 # --- Feature: Group Finder ---
 wc_26_groups = {
     "Group A": ["Mexico", "South Africa", "South Korea", "Czechia"],
@@ -83,15 +83,16 @@ wc_26_groups = {
     "Group K": ["Portugal", "DR Congo", "Uzbekistan", "Colombia"],
     "Group L": ["England", "Croatia", "Ghana", "Panama"]
 }
-st.markdown("---")# --- App Navigation (Tabs) ---
-tab1, tab2, tab3 = st.tabs(["⚽ Match Simulator", "🏆 Winning Probability", "📈 Power Rankings"])
 
+st.markdown("---")
+
+# --- App Navigation (Tabs) ---
+tab1, tab2, tab3 = st.tabs(["⚽ Match Simulator", "🏆 Winning Probability", "📈 Power Rankings"])
 
 # ==========================================
 # TAB 1: MATCH SIMULATOR
 # ==========================================
 with tab1:
-
     st.subheader("🔍 Group Finder")
 
     search_team = st.selectbox(
@@ -161,7 +162,7 @@ with tab1:
         if not team_h or not team_a:
             st.warning("⚠️ Please select both a Home Team and an Away Team before simulating!")
         else:
-           # 1. Build BOTH feature arrays (Forward and Backward)
+            # 1. Build BOTH feature arrays (Forward and Backward)
             match_forward = pd.DataFrame(
                 [[elo_h - elo_a, 1, 0, 0, 0, 0, 1]],
                 columns=['elo_pre_diff', 'neutral', 'k_20', 'k_30', 'k_40', 'k_50', 'k_60']
@@ -229,19 +230,21 @@ with tab1:
             else:
                 data = {f"{team_h} Win": p_team_1, "Draw": p_draw, f"{team_a} Win": p_team_2}
                 
-            sns.barplot(x=list(data.values()), y=list(data.keys()), palette="magma", ax=ax)
+            # FIX: Added `hue` parameter mapping to the same keys as `y` and disabled the legend
+            sns.barplot(
+                x=list(data.values()), 
+                y=list(data.keys()), 
+                hue=list(data.keys()), 
+                palette="magma", 
+                legend=False, 
+                ax=ax
+            )
             ax.set_xlabel("Probability (%)")
             st.pyplot(fig)
 
 # ==========================================
 # TAB 2: STATIC SIMULATION RESULTS
 # ==========================================
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import io
-
 with tab2:
     st.subheader("🏆 Full Tournament Prediction Results")
     st.markdown("These graphics show the winning probability of a team calculated across **10,000 Monte Carlo simulations** of the full tournament using the model trained.")
@@ -273,7 +276,8 @@ with tab2:
 
     # 2. Read the string as a dataframe and drop the old index column
     simul = pd.read_csv(io.StringIO(csv_data))
-    simul = simul.drop(columns=['index'])
+    if 'index' in simul.columns:
+        simul = simul.drop(columns=['index'])
     
     # Create a copy to adjust the index for the leaderboard display 
     df_display = simul.copy()
@@ -304,7 +308,7 @@ with tab2:
         sns.set_theme(style="whitegrid", font="sans-serif")
         
         # Setup figure
-        fig, ax = plt.subplots(figsize=(10, 5.5), dpi=150)
+        fig_static, ax_static = plt.subplots(figsize=(10, 5.5), dpi=150)
         
         # Bar plot with top 15 teams
         palette = sns.color_palette("Blues_r", n_colors=len(top_simul))
@@ -318,11 +322,11 @@ with tab2:
             edgecolor="white",
             linewidth=1.5,
             alpha=0.9,
-            ax=ax
+            ax=ax_static
         )
         
         # Styled error bars (Using the MCSE_% column)
-        error_bars = ax.errorbar(
+        error_bars = ax_static.errorbar(
             x=range(len(top_simul)),
             y=top_simul['Probability_%'],
             yerr=top_simul['MCSE_%'],
@@ -336,22 +340,23 @@ with tab2:
         )
         
         # Axes formatting and Titles
-        ax.set_ylim(0, max(top_simul['Probability_%'] + top_simul['MCSE_%']) * 1.25)
-        ax.yaxis.set_major_formatter('{x:.0f}%')
+        ax_static.set_ylim(0, max(top_simul['Probability_%'] + top_simul['MCSE_%']) * 1.25)
+        
+        # FIX: Bulletproof Matplotlib percentage formatting
+        ax_static.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:.0f}%'))
         
         # Legend with only the error bars
-        ax.legend(handles=[error_bars], loc='upper right', frameon=True, facecolor='white', edgecolor='grey')
+        ax_static.legend(handles=[error_bars], loc='upper right', frameon=True, facecolor='white', edgecolor='grey')
         
-        ax.set_title("2026 World Cup Estimated Winning Probabilities (Top 15)", fontsize=14, fontweight='bold', pad=15)
-        ax.set_xlabel("Team", fontsize=11, fontweight='semibold', labelpad=10)
-        ax.set_ylabel("Probability (%)", fontsize=11, fontweight='semibold', labelpad=10)
+        ax_static.set_title("2026 World Cup Estimated Winning Probabilities (Top 15)", fontsize=14, fontweight='bold', pad=15)
+        ax_static.set_xlabel("Team", fontsize=11, fontweight='semibold', labelpad=10)
+        ax_static.set_ylabel("Probability (%)", fontsize=11, fontweight='semibold', labelpad=10)
         
         plt.xticks(rotation=45, ha='right', fontsize=10)
         plt.tight_layout()
         
         # Display in Streamlit
-        st.pyplot(fig)
-
+        st.pyplot(fig_static)
 
 # ==========================================
 # TAB 3: POWER RANKINGS
@@ -386,7 +391,17 @@ with tab3:
         st.markdown("**Top 15 Teams Worldwide**")
         # Plot a horizontal bar chart of just the Top 15 teams
         fig_rank, ax_rank = plt.subplots(figsize=(8, 10))
-        sns.barplot(data=df_ranks.head(15), x="ELO Rating", y="Team", palette="viridis", ax=ax_rank)
+        
+        # FIX: Added `hue="Team"` and `legend=False` for Seaborn v0.13.0+ compatibility
+        sns.barplot(
+            data=df_ranks.head(15), 
+            x="ELO Rating", 
+            y="Team", 
+            hue="Team", 
+            palette="viridis", 
+            legend=False, 
+            ax=ax_rank
+        )
         
         # Adjust the X-axis so the differences are more visible (zoomed in)
         min_elo = df_ranks.head(15)["ELO Rating"].min() - 50
@@ -396,8 +411,7 @@ with tab3:
         
         st.pyplot(fig_rank)
 
-
-st.markdown("---")  # Adds a clean separating line
+st.markdown("---")  
 st.markdown(
     """
     <div style="text-align: center; color: gray; font-size: 0.8em;">
